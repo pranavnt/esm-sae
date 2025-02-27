@@ -22,7 +22,7 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-from esm_sae.model import Autoencoder
+from esm_sae.sae.model import Autoencoder
 
 def load_embedded_clusters(json_path: str) -> dict:
     """Load the embedded clusters JSON file."""

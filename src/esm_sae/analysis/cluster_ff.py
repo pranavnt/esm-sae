@@ -31,7 +31,7 @@ import jax.numpy as jnp
 from tqdm import tqdm
 
 # Ensure your SAE model is importable.
-from esm_sae.model import Autoencoder
+from esm_sae.sae.model import Autoencoder
 
 
 def load_params(checkpoint_path: str):

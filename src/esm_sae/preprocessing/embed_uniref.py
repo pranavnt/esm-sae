@@ -3,8 +3,7 @@ import torch
 from pathlib import Path
 from tqdm import tqdm
 from typing import List, Iterator
-from esm.models.esmc import ESMC
-from esm.sdk.api import BatchedESMProtein
+from esm_sae.esmc import BatchedESMProtein, BatchedESMC
 
 def batch_iterator(sequences: List[str], batch_size: int) -> Iterator[List[str]]:
     """Yields batches of sequences."""
@@ -49,7 +48,7 @@ def get_embeddings_for_large_dataset(
 
     # Load model
     print(f"Loading model {model_name}...")
-    model = ESMC.from_pretrained(model_name, device=device)
+    model = BatchedESMC.from_pretrained(model_name, device=device)
     model.eval()
 
     # Process sequences
@@ -126,7 +125,7 @@ def load_sequences_from_fasta(fasta_path: str) -> List[str]:
 # Example usage
 if __name__ == "__main__":
     # Example with FASTA file
-    fasta_path = "uniref50_10M_sample.fasta"
+    fasta_path = "./data/uniref50_1M_sample.fasta"
     output_dir = "embeddings_output"
 
     print("Loading sequences...")

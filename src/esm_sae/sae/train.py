@@ -10,8 +10,8 @@ import wandb
 from functools import partial
 
 # Import your modules
-from esm_sae.model import Autoencoder
-from esm_sae.loss import ae_loss
+from esm_sae.sae.model import Autoencoder
+from esm_sae.sae.loss import ae_loss
 
 
 def load_all_embeddings_np(np_dir: str) -> np.ndarray:
