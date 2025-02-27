@@ -1,0 +1,24 @@
+[project]
+name = "esm-sae"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "esm",
+    "biopython>=1.85",
+    "scikit-learn>=1.6.1",
+    "pandas>=2.2.3",
+    "matplotlib>=3.10.0",
+    "jax>=0.5.1",
+    "flax>=0.10.4",
+    "optax>=0.2.4",
+    "wandb>=0.19.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+esm = { git = "https://github.com/evolutionaryscale/esm" }
