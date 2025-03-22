@@ -1,12 +1,5 @@
-"""Evaluation module for ESM-SAE."""
+"""
+Evaluation module for assessing the interpretability of ESM-SAE features.
 
-from esm_sae.evaluation.domain_f1 import calculate_domain_f1, evaluate_feature_concepts
-from esm_sae.evaluation.run_eval import evaluate_checkpoint
-from esm_sae.evaluation.download_datasets import download_evaluation_datasets
-
-__all__ = [
-    "calculate_domain_f1",
-    "evaluate_feature_concepts",
-    "evaluate_checkpoint",
-    "download_evaluation_datasets",
-]
+This module implements concept-based evaluation methods adapted from InterPLM.
+"""
