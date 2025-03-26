@@ -132,8 +132,15 @@ def get_sae_feats_in_batches(
 
     # Process in batches
     all_features = []
-
-    for i in range(0, len(embeddings), chunk_size):
+    
+    # Ensure embeddings is an indexable array
+    if not isinstance(embeddings, (list, np.ndarray)) and not hasattr(embeddings, "__len__"):
+        embeddings = np.array(embeddings)
+    
+    # Get embedding length
+    embed_len = len(embeddings)
+    
+    for i in range(0, embed_len, chunk_size):
         # Get batch
         batch = embeddings[i:i + chunk_size]
         # Convert to jnp.ndarray
