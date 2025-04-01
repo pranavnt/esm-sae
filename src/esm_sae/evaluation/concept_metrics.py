@@ -1,113 +1,120 @@
 """
 Calculate and analyze concept-feature relationships.
+This version uses multithreading with concurrent.futures (via ProcessPoolExecutor)
+to parallelize the processing of concepts.
 """
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 from tqdm import tqdm
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
+import concurrent.futures
 
 from esm_sae.evaluation.evaluation_config import ACTIVATION_THRESHOLDS
 
+def process_concept_vectorized(
+    concept: str,
+    labels: dict,
+    protein_ids: List[str],
+    feature_activations: Dict[str, Dict[float, np.ndarray]],
+    thresholds: List[float],
+    n_features: int,
+    min_positive: int
+) -> List[dict]:
+    """
+    Process a single concept in a vectorized manner.
+    For each threshold, stack the activation vectors into a matrix and compute metrics for each feature.
+    Returns a list of metric dictionaries for this concept.
+    """
+    # Select proteins for which activations exist.
+    concept_protein_ids = [pid for pid in protein_ids if pid in feature_activations]
+    if not concept_protein_ids:
+        return []
+
+    # Build label array for this concept.
+    concept_label_array = np.array([labels[pid] for pid in concept_protein_ids])
+    positive_count = np.sum(concept_label_array)
+    if positive_count < min_positive:
+        return []
+
+    results = []
+    for threshold in thresholds:
+        try:
+            # Build activation matrix of shape (n_proteins, n_features) for this threshold.
+            act_matrix = np.stack([feature_activations[pid][threshold] for pid in concept_protein_ids])
+        except Exception as e:
+            print(f"Error stacking activations for concept '{concept}' at threshold {threshold}: {e}")
+            continue
+
+        # Process each feature (i.e. each column) vector.
+        for i in range(n_features):
+            col = act_matrix[:, i]
+            if np.sum(col) == 0:
+                continue
+
+            precision, recall, f1, _ = precision_recall_fscore_support(
+                concept_label_array, col, average='binary', zero_division=0
+            )
+            try:
+                auroc = roc_auc_score(concept_label_array, col)
+            except Exception:
+                auroc = 0.5
+
+            tp = np.sum((concept_label_array == 1) & (col == 1))
+            fp = np.sum((concept_label_array == 0) & (col == 1))
+            tn = np.sum((concept_label_array == 0) & (col == 0))
+            fn = np.sum((concept_label_array == 1) & (col == 0))
+            results.append({
+                "concept": concept,
+                "feature_id": i,
+                "threshold": threshold,
+                "precision": precision,
+                "recall": recall,
+                "f1_score": f1,
+                "auroc": auroc,
+                "true_positives": int(tp),
+                "false_positives": int(fp),
+                "true_negatives": int(tn),
+                "false_negatives": int(fn),
+                "positive_count": int(positive_count),
+            })
+    return results
 
 def calculate_feature_concept_metrics(
     feature_activations: Dict[str, Dict[float, np.ndarray]],
-    concept_labels: Dict[str, np.ndarray],
+    concept_labels: Dict[str, dict],
     protein_ids: List[str],
     thresholds: List[float] = ACTIVATION_THRESHOLDS,
     min_positive: int = 5
 ) -> pd.DataFrame:
     """
-    Calculate F1, precision, and recall for each feature-concept pair.
-
-    Args:
-        feature_activations: Dictionary mapping protein IDs to binary activations
-        concept_labels: Dictionary mapping concepts to binary labels
-        protein_ids: List of protein IDs to include
-        thresholds: Activation thresholds to evaluate
-        min_positive: Minimum number of positive examples required
-
-    Returns:
-        DataFrame with metrics for each feature-concept-threshold combination
+    Calculate F1, precision, recall, and AUROC for each feature-concept-threshold combination.
+    This version processes each concept in parallel using concurrent.futures.
     """
     print("Calculating feature-concept metrics")
     results = []
-
-    # Get number of features from first activation
     first_pid = next(iter(feature_activations))
     first_threshold = thresholds[0]
     n_features = len(feature_activations[first_pid][first_threshold])
 
-    # Calculate metrics for each concept
-    for concept, labels in tqdm(concept_labels.items(), desc="Processing concepts"):
-        # Filter to proteins with labels
-        concept_protein_ids = [pid for pid in protein_ids if pid in feature_activations]
-        concept_label_array = np.array([labels[pid] for pid in concept_protein_ids])
+    # Use ProcessPoolExecutor to parallelize concept processing.
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = {
+            executor.submit(
+                process_concept_vectorized,
+                concept, labels, protein_ids, feature_activations, thresholds, n_features, min_positive
+            ): concept for concept, labels in concept_labels.items()
+        }
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing concepts"):
+            try:
+                res = future.result()
+                results.extend(res)
+            except Exception as exc:
+                print(f"Concept {futures[future]} generated an exception: {exc}")
 
-        # Skip concepts with too few positive examples
-        positive_count = np.sum(concept_label_array)
-        if positive_count < min_positive:
-            continue
-
-        # Process each threshold
-        for threshold in thresholds:
-            # Get activations for each feature at this threshold
-            feature_activations_arrays = []
-            for i in range(n_features):
-                feature_act = np.array([
-                    feature_activations[pid][threshold][i]
-                    if i < len(feature_activations[pid][threshold]) else 0
-                    for pid in concept_protein_ids
-                ])
-                feature_activations_arrays.append(feature_act)
-
-            # Calculate metrics for each feature
-            for feature_id, feature_act in enumerate(feature_activations_arrays):
-                # Skip if no activations for this feature
-                if np.sum(feature_act) == 0:
-                    continue
-
-                # Calculate precision, recall, F1
-                precision, recall, f1, _ = precision_recall_fscore_support(
-                    concept_label_array,
-                    feature_act,
-                    average='binary',
-                    zero_division=0
-                )
-
-                # Calculate AUROC if possible
-                try:
-                    auroc = roc_auc_score(concept_label_array, feature_act)
-                except:
-                    auroc = 0.5  # Default for random performance
-
-                # Calculate true/false positives/negatives
-                tp = np.sum((concept_label_array == 1) & (feature_act == 1))
-                fp = np.sum((concept_label_array == 0) & (feature_act == 1))
-                tn = np.sum((concept_label_array == 0) & (feature_act == 0))
-                fn = np.sum((concept_label_array == 1) & (feature_act == 0))
-
-                # Store results
-                results.append({
-                    "concept": concept,
-                    "feature_id": feature_id,
-                    "threshold": threshold,
-                    "precision": precision,
-                    "recall": recall,
-                    "f1_score": f1,
-                    "auroc": auroc,
-                    "true_positives": tp,
-                    "false_positives": fp,
-                    "true_negatives": tn,
-                    "false_negatives": fn,
-                    "positive_count": positive_count,
-                })
-
-    # Convert to DataFrame
-    results_df = pd.DataFrame(results)
-    print(f"Calculated metrics for {len(results_df)} feature-concept-threshold combinations")
-    return results_df
-
+    print(f"Calculated metrics for {len(results)} feature-concept-threshold combinations")
+    return pd.DataFrame(results)
 
 def find_best_features_per_concept(
     metrics_df: pd.DataFrame,
@@ -115,28 +122,12 @@ def find_best_features_per_concept(
 ) -> pd.DataFrame:
     """
     Find the top-k features for each concept based on F1 score.
-
-    Args:
-        metrics_df: DataFrame with metrics for each feature-concept pair
-        top_k: Number of top features to return per concept
-
-    Returns:
-        DataFrame with top features for each concept
     """
-    # Group by concept and find best feature-threshold combination
     best_features = []
-
     for concept, concept_df in metrics_df.groupby("concept"):
-        # Sort by F1 score
         sorted_df = concept_df.sort_values("f1_score", ascending=False)
-
-        # Get top-k features
         top_features = sorted_df.head(top_k)
-
-        # Add to results
         best_features.append(top_features)
-
-    # Combine results
     if best_features:
         return pd.concat(best_features).sort_values(["concept", "f1_score"], ascending=[True, False])
     else:

@@ -12,7 +12,7 @@ OUTPUT_DIR = Path("results/evaluation")  # Where to save results
 # Evaluation parameters
 ACTIVATION_THRESHOLDS = [0.0, 0.15, 0.3, 0.5, 0.8]  # Thresholds to evaluate
 MIN_SAMPLES_PER_CONCEPT = 10  # Minimum samples needed for a concept
-TOP_K_FEATURES = 64  # Number of top features to report per concept
+TOP_K_FEATURES = 32  # Number of top features to report per concept
 
 # Concept categories to evaluate
 CONCEPT_CATEGORIES = {
